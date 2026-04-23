@@ -17,7 +17,7 @@ async def send_imessage(text: str) -> None:
 
     url = f"https://backend.blooio.com/v2/api/chats/{to_phone}/messages"
     headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {"text": text, "from": from_phone} if from_phone else {"text": text}
+    payload = {"text": text, "from_number": from_phone} if from_phone else {"text": text}
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
