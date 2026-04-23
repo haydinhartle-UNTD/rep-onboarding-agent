@@ -1,10 +1,7 @@
-import asyncio
 import hmac
 import logging
 import os
 import time
-from contextlib import asynccontextmanager
-from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
@@ -23,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Idempotency cache: prevents double-submission if Zapier retries the webhook.
-# Key: "{ghl_contact_id}:{first_name}:{last_name}"
+# Key: "{new_gmail}:{first_name}:{last_name}"
 # Value: Unix timestamp of first receipt
 # ---------------------------------------------------------------------------
 _SEEN: dict[str, float] = {}
@@ -32,7 +29,6 @@ _DEDUPE_TTL = 600  # 10 minutes
 
 def _is_duplicate(key: str) -> bool:
     now = time.time()
-    # Prune expired entries
     expired = [k for k, ts in _SEEN.items() if now - ts > _DEDUPE_TTL]
     for k in expired:
         del _SEEN[k]
@@ -43,20 +39,14 @@ def _is_duplicate(key: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Pydantic model — matches the Zapier webhook payload
+# Pydantic model — fields sent by Zapier (Google Workspace New User trigger)
+# company_id is static and injected from env, not required in payload
 # ---------------------------------------------------------------------------
 class RepPayload(BaseModel):
     first_name: str
     last_name: str
-    personal_email: str
     new_gmail: str
     phone: str
-    address: str
-    city: str
-    state: str
-    zip_code: str
-    start_date: str
-    ghl_contact_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -91,15 +81,12 @@ async def rep_onboarding_webhook(
         raise HTTPException(status_code=422, detail=str(exc))
 
     # 3. Idempotency check
-    dedup_key = f"{payload.ghl_contact_id}:{payload.first_name}:{payload.last_name}"
+    dedup_key = f"{payload.new_gmail}:{payload.first_name}:{payload.last_name}"
     if _is_duplicate(dedup_key):
         logger.info("Duplicate webhook ignored for key: %s", dedup_key)
         return {"status": "duplicate", "message": "Already processing this rep — ignoring retry"}
 
-    logger.info(
-        "Webhook accepted for %s %s (ghl_contact_id=%s)",
-        payload.first_name, payload.last_name, payload.ghl_contact_id,
-    )
+    logger.info("Webhook accepted for %s %s (%s)", payload.first_name, payload.last_name, payload.new_gmail)
 
     # 4. Return 200 immediately (Zapier has a short timeout)
     background_tasks.add_task(_run_onboarding, payload)
@@ -118,7 +105,9 @@ async def _run_onboarding(payload: RepPayload) -> None:
         await send_imessage(msg)
         return
 
+    # Inject static company_id — never comes from the webhook
     rep_data = payload.model_dump()
+    rep_data["company_id"] = os.environ.get("COMPANY_ID", "")
 
     try:
         logger.info("Starting agent for %s %s", first, last)
