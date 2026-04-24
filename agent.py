@@ -158,9 +158,11 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
                         "reason": f"could not find input for question: {label_text}",
                     }
 
-                # Advance to next question — try OK button first, then Enter
+                # Advance — try OK/Next first, then any submit-like button, then Enter
                 advanced = False
-                for ok_text in ["OK", "Ok", "Next", "Continue"]:
+
+                # 1. Try standard advance buttons
+                for ok_text in ["OK", "Ok", "okay", "Next", "Continue"]:
                     try:
                         btn = page.get_by_role("button", name=ok_text)
                         if await btn.is_visible():
@@ -170,10 +172,40 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
                     except Exception:
                         pass
 
+                # 2. Try submit buttons (Typeform end-of-form)
+                if not advanced:
+                    for submit_text in ["Submit", "Send", "Done", "Finish",
+                                        "Submit now", "Send it"]:
+                        try:
+                            btn = page.get_by_role("button", name=submit_text)
+                            if await btn.is_visible():
+                                await btn.click()
+                                advanced = True
+                                await asyncio.sleep(2)
+                                break
+                        except Exception:
+                            pass
+
+                # 3. Try any visible button as last resort
+                if not advanced:
+                    try:
+                        btns = page.locator("button:visible")
+                        count = await btns.count()
+                        for i in range(count):
+                            btn = btns.nth(i)
+                            btn_text = (await btn.inner_text()).strip()
+                            logger.info("Visible button found: '%s'", btn_text)
+                            await btn.click()
+                            advanced = True
+                            break
+                    except Exception:
+                        pass
+
+                # 4. Fall back to Enter key
                 if not advanced:
                     await page.keyboard.press("Enter")
 
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(2)
 
             return {
                 "status": "failed",
