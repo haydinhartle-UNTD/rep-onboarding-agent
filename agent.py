@@ -91,7 +91,7 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
     messages = [{"role": "user", "content": user_message}]
 
     computer_tool = {
-        "type": "computer_20250124",
+        "type": "computer_20251124",
         "name": "computer",
         "display_width_px": 1280,
         "display_height_px": 800,
@@ -102,12 +102,12 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
         await navigate(typeform_url)
         for iteration in range(max_iterations):
             response = await client.beta.messages.create(
-                model="claude-3-7-sonnet-20250219",
+                model="claude-sonnet-4-5",
                 max_tokens=4096,
                 system=_SYSTEM_PROMPT,
                 tools=[computer_tool],
                 messages=messages,
-                betas=["computer-use-2025-01-24"],
+                betas=["computer-use-2025-11-24"],
             )
 
             tool_uses = [b for b in response.content if b.type == "tool_use"]
