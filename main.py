@@ -107,10 +107,11 @@ async def _run_onboarding(payload: RepPayload) -> None:
 
     # Inject static company_id — never comes from the webhook
     rep_data = payload.model_dump()
-    rep_data["company_id"] = os.environ.get("COMPANY_ID", "")
+    rep_data["company_id"] = os.environ.get("COMPANY_ID", "32457")
 
     try:
-        logger.info("Starting agent for %s %s", first, last)
+        logger.info("Starting agent for %s %s with rep_data keys: %s and company_id: %s",
+                    first, last, list(rep_data.keys()), rep_data["company_id"])
         result = await fill_installer_typeform(typeform_url, rep_data)
         status = result.get("status")
 
