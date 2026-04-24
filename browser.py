@@ -17,7 +17,7 @@ _STUB_PNG = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg=="
 )
 
-STUB_MODE = True  # flipped to False when real browser is implemented
+STUB_MODE = False
 
 
 @asynccontextmanager

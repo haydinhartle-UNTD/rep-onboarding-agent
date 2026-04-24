@@ -72,91 +72,74 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
         {"status": "submitted", "notes": "..."}  on success
         {"status": "failed",    "reason": "..."} on failure
     """
-    logger.info("fill_installer_typeform called for %s %s (stub mode)",
+    logger.info("fill_installer_typeform called for %s %s",
                 rep_data.get("first_name"), rep_data.get("last_name"))
 
-    # ------------------------------------------------------------------ #
-    # STUB — remove this block and uncomment the real loop below once     #
-    # the end-to-end pipeline (Zapier → webhook → iMessage) is confirmed. #
-    # ------------------------------------------------------------------ #
-    return {
-        "status": "submitted",
-        "notes": "STUB — browser not implemented. Pipeline verified OK.",
+    import anthropic
+    from browser import browser_session, execute_tool, navigate
+
+    max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "40"))
+    client = anthropic.AsyncAnthropic()
+
+    rep_summary = json.dumps(_safe_rep_log(rep_data), indent=2)
+    user_message = (
+        f"Please fill out this Typeform for a new rep:\n\n"
+        f"URL: {typeform_url}\n\n"
+        f"Rep data:\n{rep_summary}"
+    )
+
+    messages = [{"role": "user", "content": user_message}]
+
+    computer_tool = {
+        "type": "computer_20250124",
+        "name": "computer",
+        "display_width_px": 1280,
+        "display_height_px": 800,
+        "display_number": 1,
     }
 
-    # ------------------------------------------------------------------ #
-    # REAL Computer Use loop (activated in Phase 5)                       #
-    # ------------------------------------------------------------------ #
-    # import anthropic                                                     # noqa: E265
-    # from browser import browser_session, execute_tool, navigate         # noqa: E265
-    #                                                                      #
-    # max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "40"))  #
-    # client = anthropic.AsyncAnthropic()                                  #
-    #                                                                      #
-    # rep_summary = json.dumps(_safe_rep_log(rep_data), indent=2)         #
-    # user_message = (                                                     #
-    #     f"Please fill out this Typeform for a new rep:\n\n"             #
-    #     f"URL: {typeform_url}\n\n"                                      #
-    #     f"Rep data:\n{rep_summary}"                                     #
-    # )                                                                    #
-    #                                                                      #
-    # messages = [{"role": "user", "content": user_message}]             #
-    #                                                                      #
-    # computer_tool = {                                                    #
-    #     "type": "computer_20250124",                                    #
-    #     "name": "computer",                                             #
-    #     "display_width_px": 1280,                                       #
-    #     "display_height_px": 800,                                       #
-    #     "display_number": 1,                                            #
-    # }                                                                    #
-    #                                                                      #
-    # async with browser_session():                                        #
-    #     await navigate(typeform_url)                                    #
-    #     for iteration in range(max_iterations):                         #
-    #         response = await client.beta.messages.create(               #
-    #             model="claude-opus-4-7",                                #
-    #             max_tokens=4096,                                         #
-    #             system=_SYSTEM_PROMPT,                                  #
-    #             tools=[computer_tool],                                  #
-    #             messages=messages,                                      #
-    #             betas=["computer-use-2025-01-24"],                      #
-    #         )                                                            #
-    #                                                                      #
-    #         tool_uses = [b for b in response.content                    #
-    #                      if b.type == "tool_use"]                       #
-    #                                                                      #
-    #         if response.stop_reason == "end_turn" and not tool_uses:    #
-    #             final_text = next(                                       #
-    #                 (b.text for b in response.content                   #
-    #                  if hasattr(b, "text")), ""                         #
-    #             )                                                        #
-    #             return _parse_verdict(final_text)                       #
-    #                                                                      #
-    #         # Execute each tool call and collect results                #
-    #         tool_results = []                                            #
-    #         for tu in tool_uses:                                         #
-    #             screenshot_b64 = await execute_tool(tu.input)           #
-    #             tool_results.append({                                    #
-    #                 "type": "tool_result",                              #
-    #                 "tool_use_id": tu.id,                               #
-    #                 "content": [{                                        #
-    #                     "type": "image",                                #
-    #                     "source": {                                      #
-    #                         "type": "base64",                           #
-    #                         "media_type": "image/png",                  #
-    #                         "data": screenshot_b64,                     #
-    #                     },                                               #
-    #                 }],                                                  #
-    #             })                                                       #
-    #                                                                      #
-    #         # Add assistant turn + tool results to message history      #
-    #         messages.append({"role": "assistant", "content": response.content})  # noqa: E501
-    #         messages.append({"role": "user", "content": tool_results}) #
-    #                                                                      #
-    #         logger.info("Computer Use iteration %d/%d complete",        #
-    #                     iteration + 1, max_iterations)                  #
-    #                                                                      #
-    #     return {                                                         #
-    #         "status": "failed",                                         #
-    #         "reason": f"agent hit max iterations ({max_iterations}) without finishing",  # noqa: E501
-    #     }                                                                #
+    async with browser_session():
+        await navigate(typeform_url)
+        for iteration in range(max_iterations):
+            response = await client.beta.messages.create(
+                model="claude-opus-4-7",
+                max_tokens=4096,
+                system=_SYSTEM_PROMPT,
+                tools=[computer_tool],
+                messages=messages,
+                betas=["computer-use-2025-01-24"],
+            )
+
+            tool_uses = [b for b in response.content if b.type == "tool_use"]
+
+            if response.stop_reason == "end_turn" and not tool_uses:
+                final_text = next(
+                    (b.text for b in response.content if hasattr(b, "text")), ""
+                )
+                return _parse_verdict(final_text)
+
+            tool_results = []
+            for tu in tool_uses:
+                screenshot_b64 = await execute_tool(tu.input)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu.id,
+                    "content": [{
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": screenshot_b64,
+                        },
+                    }],
+                })
+
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content": tool_results})
+
+            logger.info("Computer Use iteration %d/%d complete", iteration + 1, max_iterations)
+
+    return {
+        "status": "failed",
+        "reason": f"agent hit max iterations ({max_iterations}) without finishing",
+    }
