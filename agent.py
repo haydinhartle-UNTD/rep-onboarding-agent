@@ -102,7 +102,7 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
         await navigate(typeform_url)
         for iteration in range(max_iterations):
             response = await client.beta.messages.create(
-                model="claude-opus-4-7",
+                model="claude-3-7-sonnet-20250219",
                 max_tokens=4096,
                 system=_SYSTEM_PROMPT,
                 tools=[computer_tool],
