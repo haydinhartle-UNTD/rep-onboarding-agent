@@ -130,14 +130,19 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
                         inp = page.locator(input_selector).first
                         if await inp.is_visible():
                             await inp.click()
-                            await inp.fill(value)
+                            await asyncio.sleep(0.3)
+                            # Clear any existing value, then type character-by-character
+                            # (fill() can skip Typeform's React validation events)
+                            await page.keyboard.press("Control+a")
+                            await page.keyboard.press("Delete")
+                            await inp.press_sequentially(value, delay=50)
                             await asyncio.sleep(0.5)
                             filled = True
                             fields_filled.append(f"{label_text}={value[:15]}")
                             logger.info("Filled '%s' with '%s'", label_text, value[:30])
                             break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Input selector %s failed: %s", input_selector, e)
 
                 if not filled:
                     # Look for a submit button — might be the final step
@@ -158,54 +163,61 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
                         "reason": f"could not find input for question: {label_text}",
                     }
 
-                # Advance — try OK/Next first, then any submit-like button, then Enter
-                advanced = False
+                # Capture current question text BEFORE advancing, to detect change
+                before_url = page.url
+                before_label = label_text
 
-                # 1. Try standard advance buttons
-                for ok_text in ["OK", "Ok", "okay", "Next", "Continue"]:
+                # Press Enter — Typeform's primary advance mechanism
+                await page.keyboard.press("Enter")
+                await asyncio.sleep(2)
+
+                # Verify the question actually changed; if not, try clicking buttons
+                new_label = ""
+                for selector in [
+                    "[data-qa='question-title']", ".question-title",
+                    "[class*='questionTitle']", "h1",
+                ]:
                     try:
-                        btn = page.get_by_role("button", name=ok_text)
-                        if await btn.is_visible():
-                            await btn.click()
-                            advanced = True
-                            break
+                        el = page.locator(selector).first
+                        if await el.is_visible():
+                            new_label = (await el.inner_text()).strip()
+                            if new_label:
+                                break
                     except Exception:
                         pass
 
-                # 2. Try submit buttons (Typeform end-of-form)
-                if not advanced:
-                    for submit_text in ["Submit", "Send", "Done", "Finish",
-                                        "Submit now", "Send it"]:
-                        try:
-                            btn = page.get_by_role("button", name=submit_text)
-                            if await btn.is_visible():
-                                await btn.click()
-                                advanced = True
-                                await asyncio.sleep(2)
-                                break
-                        except Exception:
-                            pass
-
-                # 3. Try any visible button as last resort
-                if not advanced:
+                if new_label == before_label:
+                    logger.warning("Enter didn't advance — trying buttons")
+                    # Log every visible button so we can debug what Typeform shows
                     try:
                         btns = page.locator("button:visible")
                         count = await btns.count()
                         for i in range(count):
                             btn = btns.nth(i)
                             btn_text = (await btn.inner_text()).strip()
-                            logger.info("Visible button found: '%s'", btn_text)
-                            await btn.click()
-                            advanced = True
-                            break
+                            logger.info("Visible button #%d: '%s'", i, btn_text)
                     except Exception:
                         pass
 
-                # 4. Fall back to Enter key
-                if not advanced:
-                    await page.keyboard.press("Enter")
+                    # Try clicking submit-style buttons specifically
+                    clicked = False
+                    for text in ["Submit", "Send", "Done", "Finish", "OK", "Next", "Continue"]:
+                        try:
+                            btn = page.get_by_role("button", name=text)
+                            if await btn.is_visible():
+                                await btn.click()
+                                clicked = True
+                                logger.info("Clicked button: %s", text)
+                                await asyncio.sleep(2)
+                                break
+                        except Exception:
+                            pass
 
-                await asyncio.sleep(2)
+                    if not clicked:
+                        return {
+                            "status": "failed",
+                            "reason": f"stuck on '{label_text}' — Enter and buttons did not advance",
+                        }
 
             return {
                 "status": "failed",
