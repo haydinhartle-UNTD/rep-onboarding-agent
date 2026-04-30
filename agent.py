@@ -88,7 +88,7 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
     import anthropic
     from browser import browser_session, execute_tool, navigate
 
-    max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "40"))
+    max_iterations = int(os.environ.get("MAX_AGENT_ITERATIONS", "75"))
     client = anthropic.AsyncAnthropic()
 
     rep_summary = json.dumps(_safe_rep_log(rep_data), indent=2)
