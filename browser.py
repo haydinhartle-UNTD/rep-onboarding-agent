@@ -76,16 +76,24 @@ async def execute_tool(tool_call: dict) -> str:
     if page is None:
         raise RuntimeError("execute_tool called outside of browser_session context")
 
-    # Enforce 90-second hard timeout
     remaining = _state.deadline - asyncio.get_event_loop().time()
     if remaining <= 0:
-        raise TimeoutError("Browser session exceeded 90-second limit")
+        raise TimeoutError(f"Browser session exceeded hard timeout")
 
     action = tool_call.get("action")
+
+    # Map Computer Use modifier names to Playwright names
+    _MOD_MAP = {"ctrl": "Control", "control": "Control",
+                "shift": "Shift", "alt": "Alt", "meta": "Meta",
+                "cmd": "Meta", "command": "Meta"}
 
     try:
         if action == "screenshot":
             pass  # fall through to screenshot capture below
+
+        elif action == "wait":
+            duration = float(tool_call.get("duration", 1))
+            await asyncio.sleep(min(duration, 5))  # cap at 5s
 
         elif action in ("left_click", "click"):
             x, y = tool_call["coordinate"]
@@ -99,41 +107,62 @@ async def execute_tool(tool_call: dict) -> str:
             x, y = tool_call["coordinate"]
             await page.mouse.dblclick(x, y)
 
+        elif action == "triple_click":
+            x, y = tool_call["coordinate"]
+            await page.mouse.click(x, y, click_count=3)
+
         elif action == "mouse_move":
             x, y = tool_call["coordinate"]
             await page.mouse.move(x, y)
+
+        elif action == "left_click_drag":
+            start_x, start_y = tool_call.get("start_coordinate", [0, 0])
+            end_x, end_y = tool_call.get("coordinate", [0, 0])
+            await page.mouse.move(start_x, start_y)
+            await page.mouse.down()
+            await page.mouse.move(end_x, end_y)
+            await page.mouse.up()
 
         elif action == "type":
             await page.keyboard.type(tool_call["text"])
 
         elif action == "key":
-            # Claude sends key names like "Return", "Tab", "ctrl+a"
             key = tool_call["text"]
             if "+" in key:
-                # e.g. "ctrl+a" → hold ctrl, press a
                 parts = key.split("+")
                 modifiers = parts[:-1]
                 main_key = parts[-1]
                 for mod in modifiers:
-                    await page.keyboard.down(mod.capitalize())
+                    pw_mod = _MOD_MAP.get(mod.lower(), mod.capitalize())
+                    await page.keyboard.down(pw_mod)
                 await page.keyboard.press(main_key)
                 for mod in reversed(modifiers):
-                    await page.keyboard.up(mod.capitalize())
+                    pw_mod = _MOD_MAP.get(mod.lower(), mod.capitalize())
+                    await page.keyboard.up(pw_mod)
             else:
                 await page.keyboard.press(key)
 
         elif action == "scroll":
             x, y = tool_call["coordinate"]
-            direction = tool_call.get("direction", "down")
-            amount = tool_call.get("amount", 3)
+            direction = tool_call.get("scroll_direction", tool_call.get("direction", "down"))
+            amount = tool_call.get("scroll_amount", tool_call.get("amount", 3))
             delta_y = 100 * amount if direction == "down" else -100 * amount
+            delta_x = 0
+            if direction == "right":
+                delta_x = 100 * amount
+                delta_y = 0
+            elif direction == "left":
+                delta_x = -100 * amount
+                delta_y = 0
             await page.mouse.move(x, y)
-            await page.mouse.wheel(0, delta_y)
+            await page.mouse.wheel(delta_x, delta_y)
+
+        elif action == "cursor_position":
+            pass  # just take a screenshot
 
         else:
             logger.warning("[browser] Unknown action: %s", action)
 
-        # Short settle time so DOM updates are captured in screenshot
         await asyncio.sleep(0.3)
 
     except Exception as exc:
