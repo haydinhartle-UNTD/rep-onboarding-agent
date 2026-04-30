@@ -26,6 +26,12 @@ Field mapping reference (use this to match form labels to data keys):
 - "Phone", "Phone Number", "Mobile", or "Cell" → use `phone`
 - "Company ID", "Enter Company ID", "Installer ID", "Installer Company ID", or \
 similar → use `company_id`
+- "Logins Requested", "Select Logins", "Which Logins", or similar multi-select \
+asking which finance/loan provider logins are needed → SELECT ALL VISIBLE \
+OPTIONS (Aurora, Solo, EnFin, Dividend, Sunlight, Climate First Bank / \
+OneEthos, and any others shown). Click each checkbox/option one by one.
+- "Special Onboarding Instructions", "Other Instructions", "Additional Notes", \
+"Anything else", or similar free-text field → type exactly: Palmetto Portal Access
 
 How to operate the form:
 1. Take a screenshot first to see the current state of the page.
