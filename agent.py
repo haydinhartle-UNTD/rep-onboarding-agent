@@ -114,7 +114,12 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
             response = await client.beta.messages.create(
                 model="claude-sonnet-4-5",
                 max_tokens=4096,
-                system=_SYSTEM_PROMPT,
+                # Cache the system prompt — saves ~1000 input tokens per call
+                system=[{
+                    "type": "text",
+                    "text": _SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }],
                 tools=[computer_tool],
                 messages=messages,
                 betas=["computer-use-2025-01-24"],

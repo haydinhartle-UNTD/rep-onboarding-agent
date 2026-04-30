@@ -39,7 +39,7 @@ async def browser_session() -> AsyncGenerator[None, None]:
 
         # Store page on a task-local object so execute_tool() can reach it
         _state.page = page
-        _state.deadline = asyncio.get_event_loop().time() + 300  # 5-minute hard timeout
+        _state.deadline = asyncio.get_event_loop().time() + 600  # 10-minute hard timeout
 
         try:
             yield
