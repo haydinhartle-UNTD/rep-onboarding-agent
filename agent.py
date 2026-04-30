@@ -97,8 +97,8 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
     computer_tool = {
         "type": "computer_20250124",
         "name": "computer",
-        "display_width_px": 1280,
-        "display_height_px": 800,
+        "display_width_px": 1024,
+        "display_height_px": 768,
         "display_number": 1,
     }
 
@@ -141,6 +141,12 @@ async def fill_installer_typeform(typeform_url: str, rep_data: dict) -> dict:
 
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_results})
+
+            # Token-saving trick: keep the original user message + only the last
+            # 6 messages (3 turns) of history. Older screenshots are dropped to
+            # stay under input-token rate limits without losing recent context.
+            if len(messages) > 7:
+                messages = [messages[0]] + messages[-6:]
 
             logger.info("Computer Use iteration %d/%d complete", iteration + 1, max_iterations)
 

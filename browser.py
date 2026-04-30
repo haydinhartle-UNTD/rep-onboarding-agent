@@ -34,7 +34,7 @@ async def browser_session() -> AsyncGenerator[None, None]:
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={"width": 1280, "height": 800})
+        context = await browser.new_context(viewport={"width": 1024, "height": 768})
         page = await context.new_page()
 
         # Store page on a task-local object so execute_tool() can reach it
